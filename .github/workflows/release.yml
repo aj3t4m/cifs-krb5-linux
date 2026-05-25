@@ -1,0 +1,64 @@
+name: Build Release and packages
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on v1.0.0, v2.1.0, etc.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: fedora:latest # Use Fedora to ensure rpmbuild tools are available
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build rpm-devel rpmlint make gcc git tar
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          # Converts 'refs/tags/v1.2.3' to '1.2.3'
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Prepare Source Tarball
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          PROJECT_NAME="cifs-krb5-linux"
+          # Create the expected directory structure for the tarball
+          mkdir -p /tmp/$PROJECT_NAME-$VERSION
+          cp -r . /tmp/$PROJECT_NAME-$VERSION/
+          tar -czvf $PROJECT_NAME-$VERSION.tar.gz -C /tmp $PROJECT_NAME-$VERSION
+          
+          # Setup RPM directory structure
+          mkdir -p ~/rpmbuild/{SOURCES,SPECS,RPMS,SRPMS}
+          cp $PROJECT_NAME-$VERSION.tar.gz ~/rpmbuild/SOURCES/
+
+      - name: Build RPM
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          # Update the version in the spec file dynamically
+          sed -i "s/^Version:.*/Version: $VERSION/" cifs-krb5-linux.spec
+          
+          # Build the RPM
+          rpmbuild -ba cifs-krb5-linux.spec
+          
+          # Move assets to a workspace folder for the next step
+          mkdir -p dist/
+          cp ~/rpmbuild/RPMS/*/*.rpm dist/
+          cp ~/rpmbuild/SOURCES/*.tar.gz dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.rpm
+            dist/*.tar.gz
+          body: "Automated release for version ${{ steps.get_version.outputs.VERSION }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
