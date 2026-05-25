@@ -54,14 +54,13 @@ jobs:
           # Move assets to a workspace folder for the next step
           mkdir -p dist/
           cp ~/rpmbuild/RPMS/*/*.rpm dist/
-          cp ~/rpmbuild/SOURCES/*.tar.gz dist/
+          cp ~/rpmbuild/SRPMS/*.rpm dist/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             dist/*.rpm
-            dist/*.tar.gz
           body: "Automated release for version ${{ steps.get_version.outputs.VERSION }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
