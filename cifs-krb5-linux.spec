@@ -15,15 +15,16 @@ Requires:       sssd-kcm
 
 %description
 Automated Kerberos-authenticated CIFS (SMB) mounts using per-share
-configuration files, a systemd generator, and a custom SPNEGO upcall router.
+configuration files, a systemd generator, and a custom SPNEGO upcall
+router.
 
-At boot the systemd generator reads /etc/cifs-mounts.d/*.conf and produces
-per-share units that obtain a Kerberos ticket from a keytab, mount the share,
-and keep the ticket alive via a renewal timer.
+At boot the systemd generator reads /etc/cifs-mounts.d/*.conf and
+produces per-share units that obtain a Kerberos ticket from a keytab,
+mount the share, and keep the ticket alive via a renewal timer.
 
-The upcall router intercepts kernel Kerberos upcalls and directs each one to
-the correct credential cache, allowing multiple shares on the same server to
-use different Kerberos principals.
+The upcall router intercepts kernel Kerberos upcalls and directs each
+one to the correct credential cache, allowing multiple shares on the
+same server to use different Kerberos principals.
 
 %prep
 %setup -q
