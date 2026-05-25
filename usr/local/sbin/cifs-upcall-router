@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+KEY="$*"
+CONF_DIR="/etc/cifs-mounts.d"
+
+log() {
+    logger -t cifs-upcall-router "$*"
+}
+
+
+log "KEY_ID: $1"
+# Print the actual key description via keyctl
+log "$(keyctl describe $1 2>&1)"
+# Then call the real handler
+PID="$(keyctl rdescribe "$1" | awk -F ';' '{ split($12, a, "="); print strtonum(a[2]) }')"
+log "PID: $PID"
+PROCESS="$(ps -ef | grep $PID | grep -v grep)"
+log "PROCESS: $PROCESS"
+MNT=$(ps -o args= -p $PID | awk '{print $3}')
+log "MNT: $MNT"
+
+if [[ -z "$MNT" ]]; then
+    log "WARN: cannot determine mountpoint from pid=$PID"
+    exec /usr/sbin/cifs.upcall "$@"
+fi
+
+# Find conf file matching MNT
+CONF=""
+for f in "$CONF_DIR"/*.conf; do
+    [[ -f "$f" ]] || continue
+    _MOUNT="$(awk -F= '/^[[:space:]]*MOUNT[[:space:]]*=/ {
+        val=$2; sub(/^[[:space:]]+/,"",val); sub(/[[:space:]]+$/,"",val)
+        gsub(/^["\x27]|["\x27]$/,"",val); print val; exit }' "$f")"
+    [[ "$_MOUNT" == "$MNT" ]] || continue
+    CONF="$f"
+    break
+done
+
+if [[ -z "$CONF" ]]; then
+    log "WARN: no config found for $MNT"
+    exec /usr/sbin/cifs.upcall "$@"
+fi
+
+# shellcheck disable=SC1090
+source "$CONF"
+
+if [[ -z "${CACHE:-}" ]]; then
+    log "ERROR: CACHE not set in $CONF"
+    exec /usr/sbin/cifs.upcall "$@"
+fi
+
+export KRB5CCNAME="$CACHE"
+
+log "Using cache=$KRB5CCNAME conf=$(basename "$CONF")"
+
+exec /usr/sbin/cifs.upcall "$@"

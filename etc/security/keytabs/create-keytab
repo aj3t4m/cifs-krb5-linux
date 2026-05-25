@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    echo "Usage: $0 <keytab-file>"
+    echo "  Creates or updates a Kerberos keytab from a principal and password."
+    echo "  If the file exists it will be overwritten (use for password updates)."
+    exit 1
+}
+
+[[ $# -eq 1 ]] || usage
+
+KEYTAB="$1"
+
+read -r -p "Principal (user@REALM): " PRINCIPAL
+[[ -n "$PRINCIPAL" ]] || { echo "ERROR: principal cannot be empty" >&2; exit 1; }
+
+read -r -s -p "Password: " PASSWORD
+echo
+[[ -n "$PASSWORD" ]] || { echo "ERROR: password cannot be empty" >&2; exit 1; }
+
+if [[ -f "$KEYTAB" ]]; then
+    echo "WARNING: $KEYTAB already exists and will be overwritten."
+    read -r -p "Continue? [y/N]: " CONFIRM
+    [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+    rm -f "$KEYTAB"
+fi
+
+ktutil <<EOF
+addent -password -p ${PRINCIPAL} -k 1 -e aes256-cts-hmac-sha1-96
+${PASSWORD}
+wkt ${KEYTAB}
+quit
+EOF
+
+chmod 600 "$KEYTAB"
+echo "Keytab written: $KEYTAB"
+
+# Verify without leaving a ticket
+TMPCC="FILE:/tmp/.keytab-verify-$$"
+if KRB5CCNAME="$TMPCC" kinit -k -t "$KEYTAB" "$PRINCIPAL"; then
+    echo "Verification OK — principal authenticates successfully"
+    KRB5CCNAME="$TMPCC" kdestroy
+else
+    echo "WARNING: kinit verification failed — check principal and password" >&2
+    rm -f "${TMPCC#FILE:}"
+    exit 1
+fi

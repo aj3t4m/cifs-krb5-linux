@@ -1,0 +1,105 @@
+#!/bin/sh
+set -eu
+
+# Uncomment for debugging:
+#exec 2>/run/cifs-generator-err.log
+#set -x
+
+CONF_DIR="/etc/cifs-mounts.d"
+OUT="${1:-/run/systemd/generator}"
+
+mkdir -p "$OUT"
+export TMPDIR="$OUT"
+
+for f in "$CONF_DIR"/*.conf; do
+    # Prevent variable leaking between conf files
+    unset PRINCIPAL KEYTAB CACHE SERVER SHARE MOUNT \
+          CIFS_UID CIFS_GID DIR_MODE FILE_MODE \
+          VERS SEC IOCHARSET CACHE_MODE AUTO_RENEW
+
+    # shellcheck disable=SC1090
+    . "$f"
+
+    # Validate required fields before generating any units
+    valid=true
+    for var in PRINCIPAL KEYTAB CACHE SERVER SHARE MOUNT; do
+        eval "val=\${${var}:-}"
+        if [ -z "$val" ]; then
+            echo "ERROR: $var not set in $f, skipping" >&2
+            valid=false
+            break
+        fi
+    done
+    [ "$valid" = "true" ] || continue
+
+    mount_unit="$(systemd-escape -p --suffix=mount "$MOUNT")"
+    name="$(systemd-escape -p "$MOUNT")"
+
+    OPTIONS="sec=${SEC:-krb5},vers=${VERS:-3},_netdev,nosharesock"
+
+    [ -n "${CIFS_UID:-}" ] && OPTIONS="${OPTIONS},uid=${CIFS_UID}"
+    [ -n "${CIFS_GID:-}" ] && OPTIONS="${OPTIONS},gid=${CIFS_GID}"
+    [ -n "${DIR_MODE:-}" ]  && OPTIONS="${OPTIONS},dir_mode=${DIR_MODE}"
+    [ -n "${FILE_MODE:-}" ] && OPTIONS="${OPTIONS},file_mode=${FILE_MODE}"
+    [ -n "${IOCHARSET:-}" ] && OPTIONS="${OPTIONS},iocharset=${IOCHARSET}"
+    [ -n "${CACHE_MODE:-}" ] && OPTIONS="${OPTIONS},cache=${CACHE_MODE}"
+
+    cat > "$OUT/$mount_unit" <<EOF
+[Unit]
+After=network-online.target cifs-kinit-${name}.service
+Wants=network-online.target
+Requires=cifs-kinit-${name}.service
+
+[Mount]
+What=//${SERVER}/${SHARE}
+Where=${MOUNT}
+Type=cifs
+Options=${OPTIONS}
+EOF
+
+    cat > "$OUT/cifs-kinit-${name}.service" <<EOF
+[Unit]
+Description=Kerberos init ${MOUNT}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=KRB5CCNAME=${CACHE}
+ExecStart=/usr/bin/kinit -k -t ${KEYTAB} ${PRINCIPAL} -c ${CACHE}
+EOF
+
+    cat > "$OUT/cifs-renew-${name}.service" <<EOF
+[Unit]
+Description=Kerberos renew ${MOUNT}
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=KRB5CCNAME=${CACHE}
+ExecStart=/bin/bash -c '/usr/bin/kinit -R -c ${CACHE} || /usr/bin/kinit -k -t ${KEYTAB} ${PRINCIPAL} -c ${CACHE}'
+EOF
+
+    cat > "$OUT/cifs-renew-${name}.timer" <<EOF
+[Unit]
+Description=Kerberos renew timer ${MOUNT}
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=cifs-renew-${name}.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    mkdir -p "$OUT/remote-fs.target.wants"
+    ln -sf "../$mount_unit" "$OUT/remote-fs.target.wants/$mount_unit"
+
+    if [ "${AUTO_RENEW:-no}" = "yes" ]; then
+        mkdir -p "$OUT/timers.target.wants"
+        ln -sf "../cifs-renew-${name}.timer" "$OUT/timers.target.wants/cifs-renew-${name}.timer"
+    fi
+
+done
