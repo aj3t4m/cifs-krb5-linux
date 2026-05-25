@@ -2,6 +2,7 @@ Name:           cifs-krb5-linux
 Version:        1.0
 Release:        1%{?dist}
 Summary:        Automated Kerberos-authenticated CIFS mounts
+Source0:        %{name}-%{version}.tgz
 
 License:        MIT
 URL:            https://github.com/aj3t4m/cifs-krb5-linux
@@ -23,6 +24,9 @@ and keep the ticket alive via a renewal timer.
 The upcall router intercepts kernel Kerberos upcalls and directs each one to
 the correct credential cache, allowing multiple shares on the same server to
 use different Kerberos principals.
+
+%prep
+%setup -q
 
 %install
 install -D -m 0755 %{_builddir}/%{name}-%{version}/usr/lib/systemd/system-generators/cifs-krb5-generator \
