@@ -1,5 +1,5 @@
 Name:           cifs-krb5-linux
-Version:        1.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Automated Kerberos-authenticated CIFS mounts
 Source0:        %{name}-%{version}.tar.gz
@@ -96,5 +96,8 @@ fi
 systemctl daemon-reload 2>/dev/null || true
 
 %changelog
-* Sun May 25 2026 Tomasz Mateja <aj3t4m@gmail.com> - 1.0-1
+* Mon May 25 2026 Tomasz Mateja <aj3t4m@gmail.com> - 1.0.0-1
+- Adjust version to github versioning scheme
+
+* Sun May 24 2026 Tomasz Mateja <aj3t4m@gmail.com> - 1.0-1
 - Initial release
