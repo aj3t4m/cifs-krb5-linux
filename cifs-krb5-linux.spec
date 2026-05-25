@@ -1,11 +1,11 @@
 Name:           cifs-krb5-linux
 Version:        1.0.0
-Release:        1%{?dist}
+Release:        1
 Summary:        Automated Kerberos-authenticated CIFS mounts
-Source0:        %{name}-%{version}.tar.gz
 
 License:        MIT
 URL:            https://github.com/aj3t4m/cifs-krb5-linux
+Source0:        https://github.com/aj3t4m/cifs-krb5-linux/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 
 BuildArch:      noarch
 
